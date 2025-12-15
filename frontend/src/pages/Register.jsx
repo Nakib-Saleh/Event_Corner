@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FaEye, FaEyeSlash, FaUser, FaBuilding, FaUserTie } from 'react-icons/fa';
 import Lottie from 'lottie-react';
 import loginAnimation from '../assets/ladylog.json';
-import SearchableInstitution from '../components/SearchableInstitution';
 import AuthContext from '../providers/AuthContext';
+import SearchableInstitution from '../components/SearchableInstitution';
 
 const Register = () => {
   const { register, loading } = useContext(AuthContext);
@@ -270,13 +270,31 @@ const Register = () => {
                 {selectedRole === 'organizer' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Search & Select Institution
+                      Institution Name <span className="text-red-500">*</span>
                     </label>
                     <SearchableInstitution
                       value={formData.institution_name}
-                      selectedInstitutionId={formData.institution_id}
                       onSelect={handleInstitutionSelect}
+                      selectedInstitutionId={formData.institution_id}
                       placeholder="Start typing institution name..."
+                    />
+                  </div>
+                )}
+                
+                {/* Institution Field - Only for Participant role */}
+                {selectedRole === 'participant' && (
+                  <div>
+                    <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-2">
+                      Institution Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      id="institution"
+                      name="institution"
+                      value={formData.institution}
+                      onChange={handleChange}
+                      placeholder="Enter your institution name"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     />
                   </div>
                 )}
