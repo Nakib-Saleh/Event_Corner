@@ -1,6 +1,7 @@
 // src/pages/Home.jsx
-import React, { useState, useEffect, useMemo, useContext } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Link } from "react-router-dom";
+import AuthContext from "../providers/AuthContext";
 import {
   FiCalendar,
   FiUsers,
@@ -10,12 +11,14 @@ import {
   FiPlus,
   FiCheckCircle,
   FiTrendingUp,
+  FiShield,
 } from "react-icons/fi";
 import pic1 from "../assets/bd.JPG";
 import pic2 from "../assets/finals.jpg";
 import pic3 from "../assets/foreign.jpg";
 
 const Home = () => {
+  const { user } = useContext(AuthContext);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const carouselSlides = [
@@ -70,7 +73,7 @@ const Home = () => {
       name: "Nafiz Zia",
       role: "Participant",
       content:
-        "Event Lagbe helped me find amazing opportunities to showcase my skills and connect with industry professionals.",
+        "Amazing opportunities to showcase my skills and connect with industry professionals.",
       rating: 5,
     },
     {
@@ -120,11 +123,20 @@ const Home = () => {
                   </p>
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <Link
-                      to=""
+                      to="/events"
                       className="bg-yellow-400 text-gray-900 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-yellow-300 transition-colors duration-300 transform hover:scale-105"
                     >
                       Find Your Event
                     </Link>
+                    {user && (
+                      <Link
+                        to="/superadmin"
+                        className="bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-700 transition-colors duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
+                      >
+                        <FiShield size={20} />
+                        Admin Dashboard
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>
@@ -210,6 +222,17 @@ const Home = () => {
                   <h3 className="text-xl font-bold">Latest Events</h3>
                 </div>
                 <p className="text-blue-100 mt-2">Fresh events just added</p>
+              </div>          
+            </div>
+
+            {/* Your Events */}
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-green-500 to-teal-500 p-6 text-white">
+                <div className="flex items-center gap-3">
+                  <FiCheckCircle className="text-2xl" />
+                  <h3 className="text-xl font-bold">Your Events</h3>
+                </div>
+                <p className="text-green-100 mt-2">Events you've created/joined</p>
               </div>          
             </div>
           </div>
