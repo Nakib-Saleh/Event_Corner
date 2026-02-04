@@ -18,6 +18,7 @@ import crawler
 from datetime import datetime
 import json
 from pathlib import Path
+import ollama
 
 app = FastAPI(title="Banner Analyzer API", version="1.0.0")
 
