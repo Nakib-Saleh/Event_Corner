@@ -19,13 +19,19 @@ import ManageOrganizers from "../pages/dashboard/institution/ManageOrganizers";
 import Organizer from "../pages/dashboard/organizer/Organizer";
 import OrganizerProfile from "../pages/dashboard/organizer/OrganizerProfile";
 import OrganizerMyEvents from "../pages/dashboard/organizer/MyEvents";
+import ParticipantManagement from "../pages/dashboard/organizer/ParticipantManagement";
+import RegistrationFormBuilder from "../pages/dashboard/organizer/RegistrationFormBuilder";
 import Participant from "../pages/dashboard/participant/Participant";
 import ParticipantProfile from "../pages/dashboard/participant/ParticipantProfile";
+import RegisteredEvents from "../pages/dashboard/participant/RegisteredEvents";
+import BookmarkedEvents from "../pages/dashboard/participant/BookmarkedEvents";
+import Calendar from "../pages/dashboard/participant/Calendar";
 import MainLayout from "../components/MainLayout";
 import ProtectedRoute from "./PrivateRoutes";
 import EventAdd from "../pages/EventAdd";
 import EventEdit from "../pages/EventEdit";
 import EventDetail from "../pages/events/EventDetail";
+import EventRegistrationForm from "../pages/events/EventRegistrationForm";
 
 
 const PublicRoutes = createBrowserRouter([
@@ -135,6 +141,14 @@ const PublicRoutes = createBrowserRouter([
                         path: "events",
                         element: <OrganizerMyEvents />
                     },
+                    {
+                        path: "participants",
+                        element: <ParticipantManagement />
+                    },
+                    {
+                        path: "registration-form/:eventId",
+                        element: <RegistrationFormBuilder />
+                    },
                 ]
             },
             {
@@ -149,6 +163,18 @@ const PublicRoutes = createBrowserRouter([
                         path: "profile",
                         element: <ParticipantProfile />
                     },
+                    {
+                        path: "registered-events",
+                        element: <RegisteredEvents />
+                    },
+                    {
+                        path: "bookmarked-events",
+                        element: <BookmarkedEvents />
+                    },
+                    {
+                        path: "calendar",
+                        element: <Calendar />
+                    },
                 ]
             },
             {
@@ -162,6 +188,10 @@ const PublicRoutes = createBrowserRouter([
             {
                 path: "/event/:id",
                 element: <EventDetail />
+            },
+            {
+                path: "/event/:id/register",
+                element: <ProtectedRoute allowedRoles={['participant', 'organizer', 'institution']}><EventRegistrationForm /></ProtectedRoute>
             },
         ],
     },
