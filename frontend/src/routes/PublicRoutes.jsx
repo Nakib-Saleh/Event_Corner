@@ -16,22 +16,27 @@ import Institution from "../pages/dashboard/institution/Institution";
 import InstitutionProfile from "../pages/dashboard/institution/InstitutionProfile";
 import InstitutionMyEvents from "../pages/dashboard/institution/MyEvents";
 import ManageOrganizers from "../pages/dashboard/institution/ManageOrganizers";
+import InstitutionPaymentDashboard from "../pages/dashboard/institution/InstitutionPaymentDashboard";
 import Organizer from "../pages/dashboard/organizer/Organizer";
 import OrganizerProfile from "../pages/dashboard/organizer/OrganizerProfile";
 import OrganizerMyEvents from "../pages/dashboard/organizer/MyEvents";
 import ParticipantManagement from "../pages/dashboard/organizer/ParticipantManagement";
+import OrganizerPaymentDashboard from "../pages/dashboard/organizer/OrganizerPaymentDashboard";
 import RegistrationFormBuilder from "../pages/dashboard/organizer/RegistrationFormBuilder";
 import Participant from "../pages/dashboard/participant/Participant";
 import ParticipantProfile from "../pages/dashboard/participant/ParticipantProfile";
 import RegisteredEvents from "../pages/dashboard/participant/RegisteredEvents";
 import BookmarkedEvents from "../pages/dashboard/participant/BookmarkedEvents";
 import Calendar from "../pages/dashboard/participant/Calendar";
+import TransactionHistory from "../pages/dashboard/participant/TransactionHistory";
 import MainLayout from "../components/MainLayout";
 import ProtectedRoute from "./PrivateRoutes";
 import EventAdd from "../pages/EventAdd";
 import EventEdit from "../pages/EventEdit";
 import EventDetail from "../pages/events/EventDetail";
 import EventRegistrationForm from "../pages/events/EventRegistrationForm";
+import PaymentSuccess from "../pages/events/PaymentSuccess";
+import PaymentFail from "../pages/events/PaymentFail";
 
 
 const PublicRoutes = createBrowserRouter([
@@ -123,6 +128,10 @@ const PublicRoutes = createBrowserRouter([
                         path: "organizers",
                         element: <ManageOrganizers />
                     },
+                    {
+                        path: "payments",
+                        element: <InstitutionPaymentDashboard />
+                    },
                 ]
             },
             {
@@ -148,6 +157,10 @@ const PublicRoutes = createBrowserRouter([
                     {
                         path: "registration-form/:eventId",
                         element: <RegistrationFormBuilder />
+                    },
+                    {
+                        path: "payments",
+                        element: <OrganizerPaymentDashboard />
                     },
                 ]
             },
@@ -175,6 +188,10 @@ const PublicRoutes = createBrowserRouter([
                         path: "calendar",
                         element: <Calendar />
                     },
+                    {
+                        path: "transactions",
+                        element: <TransactionHistory />
+                    },
                 ]
             },
             {
@@ -192,6 +209,14 @@ const PublicRoutes = createBrowserRouter([
             {
                 path: "/event/:id/register",
                 element: <ProtectedRoute allowedRoles={['participant', 'organizer', 'institution']}><EventRegistrationForm /></ProtectedRoute>
+            },
+            {
+                path: "/payment/success",
+                element: <PaymentSuccess />
+            },
+            {
+                path: "/payment/fail",
+                element: <PaymentFail />
             },
         ],
     },
