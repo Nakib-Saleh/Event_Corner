@@ -77,7 +77,7 @@ const ParticipantManagement = () => {
     try {
       // Fetch participant details
       const response = await axios.get(API_ENDPOINTS.PARTICIPANT_DETAILS(participant.id));
-      
+
       // Also fetch the registration config to get field labels
       let fieldLabelsMap = {};
       try {
@@ -91,9 +91,9 @@ const ParticipantManagement = () => {
       } catch (configError) {
         console.log('Could not fetch form config:', configError);
       }
-      
+
       setFormFieldsMap(fieldLabelsMap);
-      
+
       if (response.data.success) {
         setSelectedParticipant(response.data.participant);
         setShowDetailsModal(true);
@@ -138,6 +138,34 @@ const ParticipantManagement = () => {
 
       if (response.data.success) {
         toast.success('Participant rejected. Email notification sent.');
+
+        // Auto-refund if participant had paid
+        if (selectedParticipant.payment_status === 'completed') {
+          try {
+            // Find transaction for this participant
+            const txnRes = await axios.get(API_ENDPOINTS.PAYMENT_TRANSACTIONS(selectedParticipant.event_id));
+            const txns = txnRes.data?.transactions || [];
+            const participantTxn = txns.find(t => t.participant_id === selectedParticipant.id && t.status === 'completed');
+
+            if (participantTxn) {
+              const refundRes = await axios.post(API_ENDPOINTS.PAYMENT_REFUND(participantTxn.id), {
+                initiated_by: userData.user_id,
+                reason: 'registration_rejected',
+                reason_detail: rejectionReason || 'Registration rejected by organizer'
+              });
+
+              if (refundRes.data?.refund_initiated) {
+                toast.success(`Refund of ৳${refundRes.data.refund_amount} initiated for the rejected participant.`, { duration: 5000 });
+              } else if (refundRes.data?.refund_policy === 'no_refund') {
+                toast('No refund issued (event policy: no refund).', { icon: 'ℹ️', duration: 4000 });
+              }
+            }
+          } catch (refundErr) {
+            console.error('Auto-refund error:', refundErr);
+            toast.error('Rejection successful but auto-refund failed. You may need to refund manually.');
+          }
+        }
+
         fetchPendingParticipants(selectedEvent);
         fetchEventsWithCounts();
         setShowRejectModal(false);
@@ -200,7 +228,7 @@ const ParticipantManagement = () => {
   const filterParticipants = (participants) => {
     if (!searchTerm) return participants;
     const term = searchTerm.toLowerCase();
-    return participants.filter(p => 
+    return participants.filter(p =>
       p.user_name?.toLowerCase().includes(term) ||
       p.user_email?.toLowerCase().includes(term) ||
       p.team_name?.toLowerCase().includes(term) ||
@@ -235,7 +263,7 @@ const ParticipantManagement = () => {
     if (formFieldsMap[fieldKey]) {
       return formFieldsMap[fieldKey];
     }
-    
+
     // Try to find a partial match - field IDs often have timestamps appended
     // e.g., "name_1770315933483" should match a field with id containing "name"
     const fieldKeyLower = fieldKey.toLowerCase();
@@ -243,18 +271,18 @@ const ParticipantManagement = () => {
       // Check if the stored ID is a prefix of the fieldKey (before the timestamp)
       const idWithoutTimestamp = id.replace(/_\d+$/, '');
       const fieldKeyWithoutTimestamp = fieldKey.replace(/_\d+$/, '');
-      
+
       if (idWithoutTimestamp === fieldKeyWithoutTimestamp) {
         return label;
       }
-      
+
       // Also check if they share the same base name
       if (id.toLowerCase().includes(fieldKeyWithoutTimestamp.toLowerCase()) ||
-          fieldKeyWithoutTimestamp.toLowerCase().includes(idWithoutTimestamp.toLowerCase())) {
+        fieldKeyWithoutTimestamp.toLowerCase().includes(idWithoutTimestamp.toLowerCase())) {
         return label;
       }
     }
-    
+
     // Try to extract a readable name from the field key
     // Field keys are typically like "name_1770315933483", "email_1770315933484", etc.
     const parts = fieldKey.split('_');
@@ -264,7 +292,7 @@ const ParticipantManagement = () => {
       if (/^\d{10,}$/.test(lastPart)) {
         parts.pop();
       }
-      
+
       // Common field name mappings
       const commonLabels = {
         'name': 'Full Name',
@@ -289,30 +317,30 @@ const ParticipantManagement = () => {
         'member3_phone': 'Member 3 Phone',
         'member3_institution': 'Member 3 Institution',
       };
-      
+
       // Join remaining parts
       const baseName = parts.join('_').toLowerCase();
-      
+
       // Check if we have a common label for this base name
       if (commonLabels[baseName]) {
         return commonLabels[baseName];
       }
-      
+
       // Check for partial matches in common labels
       for (const [key, label] of Object.entries(commonLabels)) {
         if (baseName.includes(key) || key.includes(baseName)) {
           return label;
         }
       }
-      
+
       // Format the base name nicely: replace underscores with spaces and capitalize
       const formattedName = parts
         .join(' ')
         .replace(/\b\w/g, l => l.toUpperCase());
-      
+
       return formattedName;
     }
-    
+
     // Fallback: just capitalize and replace underscores
     return fieldKey
       .replace(/_\d+$/, '') // Remove trailing timestamp
@@ -407,22 +435,20 @@ const ParticipantManagement = () => {
         <div className="flex border-b border-gray-200">
           <button
             onClick={() => setActiveTab('pending')}
-            className={`flex-1 px-6 py-4 text-center font-semibold transition ${
-              activeTab === 'pending'
+            className={`flex-1 px-6 py-4 text-center font-semibold transition ${activeTab === 'pending'
                 ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
+              }`}
           >
             <FiClock className="inline mr-2" />
             Pending Approval ({filteredPending.length})
           </button>
           <button
             onClick={() => setActiveTab('approved')}
-            className={`flex-1 px-6 py-4 text-center font-semibold transition ${
-              activeTab === 'approved'
+            className={`flex-1 px-6 py-4 text-center font-semibold transition ${activeTab === 'approved'
                 ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
+              }`}
           >
             <FiUserCheck className="inline mr-2" />
             Registered Users ({filteredApproved.length})
@@ -455,7 +481,7 @@ const ParticipantManagement = () => {
                         </div>
                         {expandedEvents[group.event_id] ? <FiChevronUp /> : <FiChevronDown />}
                       </button>
-                      
+
                       {expandedEvents[group.event_id] && (
                         <div className="divide-y divide-gray-100">
                           {group.participants.map(participant => (
@@ -551,7 +577,7 @@ const ParticipantManagement = () => {
                           </button>
                         </div>
                       </div>
-                      
+
                       {expandedEvents[`approved_${group.event_id}`] && (
                         <div className="divide-y divide-gray-100">
                           {group.participants.map(participant => (
@@ -601,12 +627,12 @@ const ParticipantManagement = () => {
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">Name</label>
-                  <p className="mt-1 text-gray-900">{selectedParticipant.user_name || selectedParticipant.form_data?.name || '-'}</p>
+                  <label className="block text-sm font-medium text-gray-500">Submitted By</label>
+                  <p className="mt-1 text-gray-900">{selectedParticipant.users?.full_name || selectedParticipant.user_name || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">Email</label>
-                  <p className="mt-1 text-gray-900">{selectedParticipant.user_email || selectedParticipant.form_data?.email || '-'}</p>
+                  <label className="block text-sm font-medium text-gray-500">Account Email</label>
+                  <p className="mt-1 text-gray-900">{selectedParticipant.users?.email || selectedParticipant.user_email || '-'}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-500">Event</label>
@@ -614,13 +640,12 @@ const ParticipantManagement = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-500">Status</label>
-                  <span className={`inline-block mt-1 px-2 py-1 text-sm rounded-full ${
-                    selectedParticipant.status === 'approved' 
-                      ? 'bg-green-100 text-green-700' 
+                  <span className={`inline-block mt-1 px-2 py-1 text-sm rounded-full ${selectedParticipant.status === 'approved'
+                      ? 'bg-green-100 text-green-700'
                       : selectedParticipant.status === 'rejected'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}>
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
                     {selectedParticipant.status}
                   </span>
                 </div>
@@ -633,9 +658,9 @@ const ParticipantManagement = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-500">Team Size</label>
                       <p className="mt-1 text-gray-900 font-medium">
-                        {selectedParticipant.team_members?.length || 
-                         (selectedParticipant.form_data ? 
-                           Object.keys(selectedParticipant.form_data).filter(k => k.toLowerCase().includes('member') && k.toLowerCase().includes('name')).length : 0)
+                        {selectedParticipant.team_members?.length ||
+                          (selectedParticipant.form_data ?
+                            Object.keys(selectedParticipant.form_data).filter(k => k.toLowerCase().includes('member') && k.toLowerCase().includes('name')).length : 0)
                         } member(s)
                       </p>
                     </div>
@@ -693,7 +718,7 @@ const ParticipantManagement = () => {
                     }
                   });
                 }
-                
+
                 // Also check the uploaded_files array (legacy support)
                 if (selectedParticipant.uploaded_files && selectedParticipant.uploaded_files.length > 0) {
                   selectedParticipant.uploaded_files.forEach((file, index) => {
@@ -802,12 +827,38 @@ const ParticipantManagement = () => {
             </div>
             <div className="p-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Rejection Reason (optional)
+                Common Rejection Reasons
+              </label>
+              <select
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && val !== '__other__') {
+                    setRejectionReason(val);
+                  } else {
+                    setRejectionReason('');
+                  }
+                }}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none mb-4 text-gray-700"
+                defaultValue=""
+              >
+                <option value="" disabled>— Select a template (optional) —</option>
+                <option value="Incomplete or missing required information">Incomplete or missing required information</option>
+                <option value="Registration form filled out incorrectly">Registration form filled out incorrectly</option>
+                <option value="Does not meet eligibility criteria for this event">Does not meet eligibility criteria for this event</option>
+                <option value="Duplicate registration detected">Duplicate registration detected</option>
+                <option value="Event capacity has been reached">Event capacity has been reached</option>
+                <option value="Registration submitted after deadline">Registration submitted after deadline</option>
+                <option value="Invalid or unverifiable identity/credentials">Invalid or unverifiable identity/credentials</option>
+                <option value="__other__">Other (write below)</option>
+              </select>
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rejection Message (optional)
               </label>
               <textarea
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Provide a reason for rejection..."
+                placeholder="Provide a reason for rejection or customize the selected template..."
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
                 rows="4"
               />
