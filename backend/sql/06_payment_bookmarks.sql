@@ -1,142 +1,25 @@
 -- ============================================================================
--- PAYMENT SYSTEM MIGRATION
--- Created: 2026-02-28
--- Purpose: Add tables for payment/transaction management
+-- EVENT CORNER - PAYMENT & BOOKMARK FUNCTIONS
+-- ============================================================================
+-- Description: Functions for payment configuration, transactions, and bookmarks
+-- Author: Event Corner Team
 -- ============================================================================
 
--- ============================================================================
--- PAYMENT CONFIGS TABLE
--- Stores payment/fee configuration per event
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS payment_configs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    
-    -- Fee configuration
-    is_paid_event BOOLEAN DEFAULT FALSE,
-    fee_amount DECIMAL(10,2) DEFAULT 0.00,
-    fee_type VARCHAR(20) DEFAULT 'per_person' CHECK (fee_type IN ('per_person', 'per_team')),
-    currency VARCHAR(3) DEFAULT 'BDT',
-    
-    -- Refund policy
-    refund_policy VARCHAR(20) DEFAULT 'full_refund' CHECK (refund_policy IN ('full_refund', 'partial_refund', 'no_refund', 'custom')),
-    refund_percentage INTEGER DEFAULT 100 CHECK (refund_percentage >= 0 AND refund_percentage <= 100),
-    
-    -- Accepted payment methods
-    accepted_methods JSONB DEFAULT '["bkash","nagad","card","bank"]',
-    
-    -- Timestamps
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    -- One payment config per event
-    UNIQUE(event_id)
-);
-
-CREATE INDEX idx_payment_configs_event ON payment_configs(event_id);
-
--- ============================================================================
--- TRANSACTIONS TABLE
--- Records all payment transactions
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    participant_id UUID REFERENCES event_participants(id) ON DELETE SET NULL,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    
-    -- Payment details
-    amount DECIMAL(10,2) NOT NULL,
-    currency VARCHAR(3) DEFAULT 'BDT',
-    payment_method VARCHAR(50),  -- 'bkash', 'nagad', 'visa', 'mastercard', 'bank', etc.
-    
-    -- SSLCommerz specific
-    tran_id VARCHAR(255) UNIQUE NOT NULL,  -- Our generated transaction ID
-    gateway_transaction_id VARCHAR(255),    -- SSLCommerz val_id
-    bank_tran_id VARCHAR(255),             -- Bank transaction ID (needed for refund)
-    
-    -- Status
-    status VARCHAR(30) NOT NULL DEFAULT 'initiated' CHECK (status IN ('initiated', 'completed', 'failed', 'cancelled', 'refunded', 'partially_refunded')),
-    
-    -- Gateway response data (full SSLCommerz response for auditing)
-    gateway_response JSONB DEFAULT '{}',
-    
-    -- Timestamps
-    initiated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE,
-    
-    -- Prevent duplicate payments for same registration
-    UNIQUE(participant_id, event_id)
-);
-
-CREATE INDEX idx_transactions_event ON transactions(event_id);
-CREATE INDEX idx_transactions_participant ON transactions(participant_id);
-CREATE INDEX idx_transactions_user ON transactions(user_id);
-CREATE INDEX idx_transactions_status ON transactions(status);
-CREATE INDEX idx_transactions_tran_id ON transactions(tran_id);
-
--- ============================================================================
--- REFUNDS TABLE
--- Tracks refund requests and their status
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS refunds (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
-    
-    -- Refund details
-    refund_amount DECIMAL(10,2) NOT NULL,
-    reason VARCHAR(50) NOT NULL CHECK (reason IN ('registration_rejected', 'event_cancelled', 'participant_cancelled', 'manual')),
-    reason_detail TEXT,
-    
-    -- Status
-    status VARCHAR(20) NOT NULL DEFAULT 'initiated' CHECK (status IN ('initiated', 'processing', 'completed', 'failed')),
-    
-    -- SSLCommerz refund response
-    gateway_refund_id VARCHAR(255),
-    gateway_response JSONB DEFAULT '{}',
-    
-    -- Who initiated the refund
-    initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    
-    -- Timestamps
-    initiated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX idx_refunds_transaction ON refunds(transaction_id);
-CREATE INDEX idx_refunds_status ON refunds(status);
-CREATE INDEX idx_refunds_initiated_by ON refunds(initiated_by);
-
--- ============================================================================
--- ALTER event_participants: Add payment_status column
--- ============================================================================
-
-ALTER TABLE event_participants
-ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'not_required' 
-    CHECK (payment_status IN ('not_required', 'pending', 'completed', 'refunded'));
-
-CREATE INDEX IF NOT EXISTS idx_event_participants_payment_status ON event_participants(payment_status);
-
--- ============================================================================
--- STORED PROCEDURES
--- ============================================================================
 
 -- ============================================================================
 -- FUNCTION: upsert_payment_config
 -- Purpose: Create or update payment configuration for an event
+-- Parameters: Payment config fields
+-- Returns: JSONB with config_id and success message
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION upsert_payment_config(
     p_event_id UUID,
-    p_is_paid_event BOOLEAN DEFAULT FALSE,
-    p_fee_amount DECIMAL DEFAULT 0.00,
-    p_fee_type VARCHAR DEFAULT 'per_person',
-    p_refund_policy VARCHAR DEFAULT 'full_refund',
+    p_is_paid_event BOOLEAN DEFAULT false,
+    p_fee_amount NUMERIC DEFAULT 0,
+    p_fee_type VARCHAR(50) DEFAULT 'per_person',
+    p_refund_policy VARCHAR(50) DEFAULT 'full_refund',
     p_refund_percentage INTEGER DEFAULT 100,
-    p_accepted_methods JSONB DEFAULT '["bkash","nagad","card","bank"]'
+    p_accepted_methods JSONB DEFAULT '["bkash", "nagad", "card", "bank"]'::jsonb
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -178,11 +61,13 @@ BEGIN
 END;
 $$;
 
+
 -- ============================================================================
 -- FUNCTION: get_payment_config
 -- Purpose: Get payment configuration for an event
+-- Parameters: event_id
+-- Returns: JSONB with payment config
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION get_payment_config(p_event_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -218,15 +103,17 @@ BEGIN
 END;
 $$;
 
+
 -- ============================================================================
 -- FUNCTION: get_event_transactions
--- Purpose: Get all transactions for an event (organizer view)
+-- Purpose: Get all transactions for an event with summary
+-- Parameters: event_id, pagination
+-- Returns: JSONB with transactions and summary
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION get_event_transactions(
     p_event_id UUID,
     p_page INTEGER DEFAULT 1,
-    p_limit INTEGER DEFAULT 20
+    p_limit INTEGER DEFAULT 10
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -310,15 +197,17 @@ BEGIN
 END;
 $$;
 
+
 -- ============================================================================
 -- FUNCTION: get_user_transactions
--- Purpose: Get all transactions for a user (participant view)
+-- Purpose: Get all transactions for a user
+-- Parameters: user_id, pagination
+-- Returns: JSONB with transactions
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION get_user_transactions(
     p_user_id UUID,
     p_page INTEGER DEFAULT 1,
-    p_limit INTEGER DEFAULT 20
+    p_limit INTEGER DEFAULT 10
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -375,6 +264,156 @@ BEGIN
             'total', v_total,
             'total_pages', CEIL(v_total::DECIMAL / p_limit)
         )
+    );
+END;
+$$;
+
+
+-- ============================================================================
+-- BOOKMARK FUNCTIONS
+-- ============================================================================
+
+
+-- ============================================================================
+-- FUNCTION: toggle_event_bookmark
+-- Purpose: Toggle bookmark status for an event (add if not exists, remove if exists)
+-- Parameters: user_id, event_id
+-- Returns: JSONB with action and bookmark_id
+-- ============================================================================
+CREATE OR REPLACE FUNCTION toggle_event_bookmark(
+    p_user_id UUID,
+    p_event_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE 
+    v_bookmark_id UUID; 
+    v_action VARCHAR(20);
+BEGIN
+    SELECT id INTO v_bookmark_id FROM event_bookmarks 
+    WHERE user_id = p_user_id AND event_id = p_event_id;
+    
+    IF v_bookmark_id IS NOT NULL THEN
+        DELETE FROM event_bookmarks WHERE id = v_bookmark_id;
+        v_action := 'removed';
+    ELSE
+        INSERT INTO event_bookmarks (user_id, event_id) 
+        VALUES (p_user_id, p_event_id) 
+        RETURNING id INTO v_bookmark_id;
+        v_action := 'added';
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true, 
+        'action', v_action, 
+        'bookmark_id', v_bookmark_id, 
+        'message', CASE WHEN v_action = 'added' 
+            THEN 'Event bookmarked successfully' 
+            ELSE 'Bookmark removed successfully' 
+        END
+    );
+END;
+$$;
+
+
+-- ============================================================================
+-- FUNCTION: check_bookmark_status
+-- Purpose: Check if a user has bookmarked an event
+-- Parameters: user_id, event_id
+-- Returns: JSONB with bookmark status
+-- ============================================================================
+CREATE OR REPLACE FUNCTION check_bookmark_status(
+    p_user_id UUID,
+    p_event_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE 
+    v_bookmark RECORD;
+BEGIN
+    SELECT * INTO v_bookmark FROM event_bookmarks 
+    WHERE user_id = p_user_id AND event_id = p_event_id;
+    
+    IF v_bookmark IS NULL THEN 
+        RETURN jsonb_build_object('success', true, 'is_bookmarked', false); 
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true, 
+        'is_bookmarked', true, 
+        'bookmarked_at', v_bookmark.bookmarked_at
+    );
+END;
+$$;
+
+
+-- ============================================================================
+-- FUNCTION: get_user_bookmarked_events
+-- Purpose: Get all bookmarked events for a user
+-- Parameters: user_id, pagination
+-- Returns: JSONB with bookmarked events
+-- ============================================================================
+CREATE OR REPLACE FUNCTION get_user_bookmarked_events(
+    p_user_id UUID,
+    p_limit INTEGER DEFAULT 10,
+    p_offset INTEGER DEFAULT 0
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_bookmarks JSONB;
+    v_total_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_total_count
+    FROM event_bookmarks eb
+    JOIN events e ON eb.event_id = e.id
+    WHERE eb.user_id = p_user_id AND e.status = 'active';
+    
+    SELECT COALESCE(jsonb_agg(event_data), '[]'::jsonb) INTO v_bookmarks
+    FROM (
+        SELECT jsonb_build_object(
+            'bookmark_id', eb.id, 
+            'event_id', e.id, 
+            'title', e.title, 
+            'description', e.description,
+            'category', e.category, 
+            'banner_url', e.banner_url, 
+            'thumbnail_url', e.thumbnail_url,
+            'venue_name', e.venue_name, 
+            'venue_type', e.venue_type, 
+            'venue_address', e.venue_address,
+            'visibility', e.visibility, 
+            'status', e.status, 
+            'bookmarked_at', eb.bookmarked_at,
+            'created_at', e.created_at,
+            'timeslots', (
+                SELECT COALESCE(jsonb_agg(
+                    jsonb_build_object(
+                        'id', et.id, 
+                        'start_time', et.start_time, 
+                        'end_time', et.end_time, 
+                        'title', et.title, 
+                        'color', et.color
+                    )
+                    ORDER BY et.start_time
+                ), '[]'::jsonb)
+                FROM event_timeslots et WHERE et.event_id = e.id
+            )
+        ) as event_data
+        FROM event_bookmarks eb
+        JOIN events e ON eb.event_id = e.id
+        WHERE eb.user_id = p_user_id AND e.status = 'active'
+        ORDER BY eb.bookmarked_at DESC
+        LIMIT p_limit OFFSET p_offset
+    ) sub;
+    
+    RETURN jsonb_build_object(
+        'success', true, 
+        'bookmarks', v_bookmarks, 
+        'total_count', v_total_count
     );
 END;
 $$;

@@ -16,6 +16,11 @@ const TimeslotModal = ({ onClose, onAdd, timezoneOffset, eventTimezone }) => {
       
       const startDate = new Date(slotData.start);
       const endDate = new Date(slotData.end);
+
+      if (endDate <= startDate) {
+        toast.error('End time must be after start time');
+        return;
+      }
       
       // Get the ISO string without timezone, then append the event timezone offset
       const startISO = slotData.start.replace('T', 'T').split('.')[0];
