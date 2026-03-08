@@ -13,6 +13,7 @@ import {
     extractFormDataEmail,
     extractFormDataName
 } from '../services/email.service.js';
+import { initiateRefund } from '../services/sslcommerz.service.js';
 
 dotenv.config();
 
@@ -750,6 +751,93 @@ router.post('/participants/:participantId/reject', async (req, res) => {
                 success: false,
                 error: error.message
             });
+        }
+
+        // Auto-refund if participant had a completed payment
+        if (data.success) {
+            try {
+                const { data: txn } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('participant_id', participantId)
+                    .eq('status', 'completed')
+                    .maybeSingle();
+
+                if (txn) {
+                    const refundAmount = parseFloat(txn.amount);
+
+                    // Create refund record
+                    const { data: refundData, error: refundError } = await supabase
+                        .from('refunds')
+                        .insert({
+                            transaction_id: txn.id,
+                            refund_amount: refundAmount,
+                            reason: 'registration_rejected',
+                            reason_detail: rejection_reason || 'Registration rejected by organizer',
+                            status: 'initiated',
+                            initiated_by: reviewer_id
+                        })
+                        .select()
+                        .single();
+
+                    if (!refundError && refundData) {
+                        if (txn.bank_tran_id) {
+                            try {
+                                const refe_id = `REFUND_${refundData.id.substring(0, 8)}_${Date.now()}`;
+                                const gatewayResult = await initiateRefund(
+                                    txn.bank_tran_id,
+                                    refundAmount,
+                                    `Registration rejected: ${rejection_reason || 'No reason provided'}`,
+                                    refe_id
+                                );
+
+                                const refundStatus = gatewayResult?.status === 'success' ? 'processing' : 'initiated';
+                                await supabase
+                                    .from('refunds')
+                                    .update({
+                                        status: refundStatus,
+                                        gateway_refund_id: gatewayResult?.refund_ref_id || refe_id,
+                                        gateway_response: gatewayResult
+                                    })
+                                    .eq('id', refundData.id);
+                            } catch (refundErr) {
+                                console.error('SSLCommerz refund error for rejected participant:', participantId, refundErr.message);
+                                await supabase
+                                    .from('refunds')
+                                    .update({
+                                        status: 'initiated',
+                                        gateway_response: { error: refundErr.message }
+                                    })
+                                    .eq('id', refundData.id);
+                            }
+                        } else {
+                            // Sandbox mode
+                            await supabase
+                                .from('refunds')
+                                .update({
+                                    status: 'processing',
+                                    gateway_response: { note: 'Refund processed locally — sandbox mode' }
+                                })
+                                .eq('id', refundData.id);
+                        }
+
+                        // Update transaction and participant payment status
+                        await supabase
+                            .from('transactions')
+                            .update({ status: 'refunded' })
+                            .eq('id', txn.id);
+
+                        await supabase
+                            .from('event_participants')
+                            .update({ payment_status: 'refunded' })
+                            .eq('id', participantId);
+
+                        console.log(`Auto-refund initiated for rejected participant ${participantId}, amount: ${refundAmount}`);
+                    }
+                }
+            } catch (refundError) {
+                console.error('Auto-refund error on rejection:', refundError);
+            }
         }
 
         // Send rejection email to BOTH registering user AND form data email
