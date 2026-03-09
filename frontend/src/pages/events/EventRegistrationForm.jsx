@@ -27,6 +27,10 @@ const EventRegistrationForm = () => {
   const [nameFieldId, setNameFieldId] = useState(null);
   const [emailFieldId, setEmailFieldId] = useState(null);
   const [paymentConfig, setPaymentConfig] = useState(null);
+  const [userRegistrations, setUserRegistrations] = useState([]); // registrations already made by this user
+  const [userRegsLoaded, setUserRegsLoaded] = useState(false);
+  const [conflictChecked, setConflictChecked] = useState(false);
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
   const fileInputRefs = useRef({});
 
   useEffect(() => {
@@ -34,6 +38,7 @@ const EventRegistrationForm = () => {
       fetchEventAndConfig();
       checkRegistrationStatus();
       fetchPaymentConfig();
+      fetchUserRegistrations();
     }
   }, [eventId, userData]);
 
@@ -45,6 +50,24 @@ const EventRegistrationForm = () => {
       }
     } catch (error) {
       console.log('No payment config for this event');
+    }
+  };
+
+  // load events this user has already registered for so we can detect timeslot conflicts
+  const fetchUserRegistrations = async () => {
+    if (!userData?.user_id) {
+      setUserRegsLoaded(true);
+      return;
+    }
+    try {
+      const res = await axios.get(API_ENDPOINTS.USER_REGISTERED_EVENTS(userData.user_id));
+      if (res.data.success && Array.isArray(res.data.registrations)) {
+        setUserRegistrations(res.data.registrations);
+      }
+    } catch (err) {
+      console.error('Could not fetch user registrations:', err);
+    } finally {
+      setUserRegsLoaded(true);
     }
   };
 
@@ -107,6 +130,43 @@ const EventRegistrationForm = () => {
       console.error('Error checking registration status:', error);
     }
   };
+
+  // Check for time conflicts once event and user registrations are fully loaded
+  useEffect(() => {
+    if (!loading && userRegsLoaded && !conflictChecked && event) {
+      const checkOverlap = (aStart, aEnd, bStart, bEnd) => {
+        const as = new Date(aStart).getTime();
+        const ae = new Date(aEnd).getTime();
+        const bs = new Date(bStart).getTime();
+        const be = new Date(bEnd).getTime();
+        return as < be && bs < ae; // ranges intersect
+      };
+      
+      const checkHasConflict = () => {
+        if (!event?.timeslots || event.timeslots.length === 0) return false;
+        for (const reg of userRegistrations) {
+          if (reg.event_id === eventId) continue;
+          if (['cancelled', 'rejected'].includes(reg.registration_status || reg.status || '')) continue;
+          const otherSlots = reg.timeslots || [];
+          for (const os of otherSlots) {
+            for (const mySlot of event.timeslots) {
+              const myStart = mySlot.start_time || mySlot.start;
+              const myEnd = mySlot.end_time || mySlot.end;
+              if (checkOverlap(os.start_time || os.start, os.end_time || os.end, myStart, myEnd)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
+
+      if (checkHasConflict()) {
+        setShowConflictDialog(true);
+      }
+      setConflictChecked(true);
+    }
+  }, [loading, userRegsLoaded, conflictChecked, event, userRegistrations, eventId]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -688,6 +748,37 @@ const EventRegistrationForm = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12 px-4">
       <Toaster position="top-right" />
+
+      {/* Schedule Conflict Dialog */}
+      {showConflictDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                <FiAlertCircle size={32} className="text-amber-500" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Schedule Conflict</h3>
+              <p className="text-gray-600 mb-6">
+                You already have a registration that overlaps with this event's time. Would you like to proceed anyway?
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => navigate(`/event/${eventId}`)}
+                  className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition"
+                >
+                  Nevermind
+                </button>
+                <button
+                  onClick={() => setShowConflictDialog(false)}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 transition"
+                >
+                  Proceed
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-3xl mx-auto">
         {/* Back Button */}

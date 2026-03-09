@@ -1,5 +1,5 @@
 import React from "react";
-import logos from "../assets/EVENT.png";
+import logos from "../assets/corner.png";
 import { IoLogoGooglePlaystore } from "react-icons/io5";
 import { FaApple } from "react-icons/fa";
 import { FaFacebookF, FaGithub, FaLinkedinIn, FaYoutube } from "react-icons/fa";
@@ -10,7 +10,7 @@ const Footer = () => {
     <div>
       <footer className="footer flex flex-col lg:flex-row justify-between bg-gray-200 text-gray-900 p-10 border-t border-gray-200 transition-colors duration-300 space-y-8 lg:space-y-0">
         <aside>
-          <img src={logos} alt="Event Lagbe" className="h-12" />
+          <img src={logos} alt="Event Lagbe" className="h-12 w-auto" />
           <p className="text-gray-700 transition-colors duration-300">
             Event Corner
             <br />
