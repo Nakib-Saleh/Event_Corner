@@ -164,13 +164,13 @@ const OrganizerPaymentDashboard = () => {
                             key={event.id}
                             onClick={() => fetchTransactions(event.id)}
                             className={`text-left p-4 rounded-xl border transition-all ${selectedEvent === event.id
-                                    ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-200'
-                                    : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                                ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-200'
+                                : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
                                 }`}
                         >
                             <h4 className="font-semibold text-gray-900 text-sm truncate">{event.title}</h4>
                             <p className="text-xs text-gray-500 mt-1">
-                                {event.participant_count || 0} participants
+                                {(event.approved_count || 0) + (event.pending_count || 0) + (event.rejected_count || 0)} participants
                             </p>
                         </button>
                     ))}
@@ -234,8 +234,8 @@ const OrganizerPaymentDashboard = () => {
                                     key={s}
                                     onClick={() => setStatusFilter(s)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${statusFilter === s
-                                            ? 'bg-teal-600 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        ? 'bg-teal-600 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
                                     {s === 'all' ? 'All' : s.replace('_', ' ')}

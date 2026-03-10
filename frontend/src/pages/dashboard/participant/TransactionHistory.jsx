@@ -150,8 +150,8 @@ const TransactionHistory = () => {
                         key={s}
                         onClick={() => setStatusFilter(s)}
                         className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${statusFilter === s
-                                ? 'bg-teal-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                     >
                         {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1).replace('_', ' ')}
@@ -178,80 +178,95 @@ const TransactionHistory = () => {
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {filteredTransactions.map((txn) => (
-                        <div
-                            key={txn.id}
-                            className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition"
-                        >
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                {/* Left: Event info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="p-2 bg-teal-100 rounded-lg flex-shrink-0">
+                    {filteredTransactions.map((txn) => {
+                        const isRefunded = (txn.status === 'refunded' || txn.status === 'partially_refunded') && txn.refund;
+                        const refundAmount = isRefunded ? parseFloat(txn.refund.refund_amount) : 0;
+                        const paidAmount = parseFloat(txn.amount) || 0;
+                        const netAmount = paidAmount - refundAmount;
+
+                        return (
+                            <div
+                                key={txn.id}
+                                className={`bg-white rounded-xl border p-5 hover:shadow-md transition ${isRefunded ? 'border-blue-200' : 'border-gray-200'}`}
+                            >
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    {/* Left: Event info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-lg flex-shrink-0 ${isRefunded ? 'bg-blue-100' : txn.payment_method === 'fee_waiver' ? 'bg-purple-100' : 'bg-teal-100'}`}>
+                                                {isRefunded ? (
+                                                    <FiRefreshCw className="text-blue-600" size={18} />
+                                                ) : txn.payment_method === 'fee_waiver' ? (
+                                                    <FiGift className="text-purple-600" size={18} />
+                                                ) : (
+                                                    <FiCreditCard className="text-teal-600" size={18} />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="font-semibold text-gray-900 truncate">
+                                                    {txn.event_title || 'Event Payment'}
+                                                </h4>
+                                                <p className="text-xs text-gray-500 truncate">
+                                                    Transaction: {txn.tran_id || txn.id?.substring(0, 12)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Middle: Amount (with refund breakdown if applicable) */}
+                                    <div className="flex items-center gap-6">
+                                        <div className="text-right">
                                             {txn.payment_method === 'fee_waiver' ? (
-                                                <FiGift className="text-purple-600" size={18} />
+                                                <p className="text-lg font-bold text-purple-600">Waived</p>
+                                            ) : isRefunded ? (
+                                                <div>
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <span className="text-sm text-gray-400 line-through">৳{paidAmount}</span>
+                                                        <span className="text-lg font-bold text-green-600">+৳{refundAmount}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500">
+                                                        Net: ৳{netAmount.toFixed(2)} • via {txn.payment_method || '—'}
+                                                    </p>
+                                                </div>
                                             ) : (
-                                                <FiCreditCard className="text-teal-600" size={18} />
+                                                <div>
+                                                    <p className="text-lg font-bold text-gray-900">৳{txn.amount}</p>
+                                                    <p className="text-xs text-gray-500 capitalize">{txn.payment_method || '—'}</p>
+                                                </div>
                                             )}
                                         </div>
-                                        <div className="min-w-0">
-                                            <h4 className="font-semibold text-gray-900 truncate">
-                                                {txn.event_title || 'Event Payment'}
-                                            </h4>
-                                            <p className="text-xs text-gray-500 truncate">
-                                                Transaction: {txn.tran_id || txn.id?.substring(0, 12)}
-                                            </p>
+
+                                        {/* Status Badge + Refund Reason */}
+                                        <div className="flex flex-col items-end gap-1">
+                                            {getStatusBadge(txn.status)}
+                                            {isRefunded && txn.refund.reason && (
+                                                <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                                    {txn.refund.reason.replace(/_/g, ' ')}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Middle: Amount + Method */}
-                                <div className="flex items-center gap-6">
-                                    <div className="text-right">
-                                        <p className="text-lg font-bold text-gray-900">
-                                            {txn.payment_method === 'fee_waiver' ? (
-                                                <span className="text-purple-600">Waived</span>
-                                            ) : (
-                                                `৳${txn.amount}`
-                                            )}
-                                        </p>
-                                        <p className="text-xs text-gray-500 capitalize">{txn.payment_method || '—'}</p>
+                                    {/* Right: Date + Action */}
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <p className="text-sm text-gray-700">{formatDate(txn.completed_at || txn.initiated_at)}</p>
+                                            <p className="text-xs text-gray-400">{formatTime(txn.completed_at || txn.initiated_at)}</p>
+                                        </div>
+                                        {txn.event_id && (
+                                            <button
+                                                onClick={() => navigate(`/event/${txn.event_id}`)}
+                                                className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition"
+                                                title="View Event"
+                                            >
+                                                <FiExternalLink size={16} />
+                                            </button>
+                                        )}
                                     </div>
-
-                                    {/* Status Badge */}
-                                    {getStatusBadge(txn.status)}
-                                </div>
-
-                                {/* Right: Date + Action */}
-                                <div className="flex items-center gap-4">
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-700">{formatDate(txn.completed_at || txn.initiated_at)}</p>
-                                        <p className="text-xs text-gray-400">{formatTime(txn.completed_at || txn.initiated_at)}</p>
-                                    </div>
-                                    {txn.event_id && (
-                                        <button
-                                            onClick={() => navigate(`/event/${txn.event_id}`)}
-                                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition"
-                                            title="View Event"
-                                        >
-                                            <FiExternalLink size={16} />
-                                        </button>
-                                    )}
                                 </div>
                             </div>
-
-                            {/* Refund Info */}
-                            {(txn.status === 'refunded' || txn.status === 'partially_refunded') && txn.refund && (
-                                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                                    <FiRefreshCw className="text-blue-500" size={14} />
-                                    <span className="text-sm text-blue-700">
-                                        ৳{txn.refund.refund_amount} refunded
-                                        {txn.refund.reason && ` — ${txn.refund.reason.replace(/_/g, ' ')}`}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
